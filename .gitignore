@@ -1,4 +1,6 @@
 scala_pg/
 example/
+.idea/
+.bsp/
 
 *.zip
