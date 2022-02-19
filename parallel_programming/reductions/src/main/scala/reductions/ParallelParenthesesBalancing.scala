@@ -38,21 +38,39 @@ object ParallelParenthesesBalancing extends ParallelParenthesesBalancingInterfac
   /** Returns `true` iff the parentheses in the input `chars` are balanced.
    */
   def balance(chars: Array[Char]): Boolean =
-    ???
+    chars.foldLeft(0) {
+      (count, ch) => ch match
+        case '(' => if count < 0 then -1 else count + 1
+        case ')' => if count < 0 then -1 else count - 1
+        case _ => count
+    } == 0
 
   /** Returns `true` iff the parentheses in the input `chars` are balanced.
    */
   def parBalance(chars: Array[Char], threshold: Int): Boolean =
 
-    def traverse(idx: Int, until: Int, arg1: Int, arg2: Int) /*: ???*/ = {
-      ???
+    def traverse(idx: Int, until: Int, arg1: Int, arg2: Int): (Int, Int) = {
+      chars.slice(idx, until).foldLeft((0, 0)) {
+        (data, ch) =>
+          val min = data._1
+          val bal = data._2
+          ch match
+            case '(' => (min, bal + 1)
+            case ')' => (Math.min(min, bal - 1), bal - 1)
+            case _ => (min, bal)
+      }
     }
 
-    def reduce(from: Int, until: Int) /*: ???*/ = {
-      ???
+    def reduce(from: Int, until: Int): (Int, Int) = {
+      if (until - from < threshold) then
+        traverse(from, until, 0, 0)
+      else
+        val mid = from + (until - from) / 2
+        val ((minL, balL), (minR, balR)) = parallel(reduce(from, mid), reduce(mid, until))
+        (Math.min(minL, balL - minR), balL + balR)
     }
 
-    reduce(0, chars.length) == ???
+    reduce(0, chars.length) == (0, 0)
 
   // For those who want more:
   // Prove that your reduction operator is associative!
