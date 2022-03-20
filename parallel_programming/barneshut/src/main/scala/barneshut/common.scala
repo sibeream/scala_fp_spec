@@ -44,31 +44,49 @@ sealed abstract class Quad extends QuadInterface:
   def insert(b: Body): Quad
 
 case class Empty(centerX: Float, centerY: Float, size: Float) extends Quad:
-  def massX: Float = ???
-  def massY: Float = ???
-  def mass: Float = ???
-  def total: Int = ???
-  def insert(b: Body): Quad = ???
+  def massX: Float = centerX
+  def massY: Float = centerY
+  def mass: Float = 0
+  def total: Int = 0
+  def insert(b: Body): Quad = Leaf(centerX, centerY, size, bodies = Seq(b))
 
 case class Fork(
   nw: Quad, ne: Quad, sw: Quad, se: Quad
 ) extends Quad:
-  val centerX: Float = ???
-  val centerY: Float = ???
-  val size: Float = ???
-  val mass: Float = ???
-  val massX: Float = ???
-  val massY: Float = ???
-  val total: Int = ???
+  val centerX: Float = (nw.centerX + ne.centerX) / 2
+  val centerY: Float = (nw.centerY + sw.centerY) / 2
+  val size: Float = nw.size * 2
+  val mass: Float = nw.mass + ne.mass + sw.mass + se.mass
+  val massX: Float = if mass != 0 then (nw.mass * nw.massX + ne.mass * ne.massX + sw.mass * sw.massX + se.mass * se.massX) / mass else centerX
+  val massY: Float = if mass != 0 then (nw.mass * nw.massY + ne.mass * ne.massY + sw.mass * sw.massY + se.mass * se.massY) / mass else centerY
+  val total: Int = nw.total + ne.total + sw.total + se.total
 
   def insert(b: Body): Fork =
-    ???
+    if (b.x < centerX && b.y < centerY) then Fork(nw.insert(b), ne, sw, se)
+    else if (b.x >= centerX && b.y < centerY) then Fork(nw, ne.insert(b), sw, se)
+    else if (b.x < centerX && b.y >= centerY) then Fork(nw, ne, sw.insert(b), se)
+    else Fork(nw, ne, sw, se.insert(b))
 
 case class Leaf(centerX: Float, centerY: Float, size: Float, bodies: coll.Seq[Body])
 extends Quad:
-  val (mass, massX, massY) = (??? : Float, ??? : Float, ??? : Float)
-  val total: Int = ???
-  def insert(b: Body): Quad = ???
+  val mass: Float = bodies.map(_.mass).sum
+  val massX: Float = bodies.map(b => b.mass * b.x).sum / mass
+  val massY: Float = bodies.map(b => b.mass * b.y).sum / mass
+  val total: Int = bodies.length
+  def insert(b: Body): Quad =
+    if (size <= minimumSize) then
+      Leaf(centerX, centerY, size, b +: bodies)
+    else
+      val quarter = size / 4
+      val wCenterX = centerX - quarter
+      val eCenterX = centerX + quarter
+      val nCenterY = centerY - quarter
+      val sCenterY = centerY + quarter
+      val nw = Empty(wCenterX, nCenterY, 2 * quarter)
+      val ne = Empty(eCenterX, nCenterY, 2 * quarter)
+      val sw = Empty(wCenterX, sCenterY, 2 * quarter)
+      val se = Empty(eCenterX, sCenterY, 2 * quarter)
+      (b +: bodies).foldLeft(Fork(nw, ne, sw, se))((a, b) => a.insert(b))
 
 def minimumSize = 0.00001f
 
@@ -113,10 +131,13 @@ class Body(val mass: Float, val x: Float, val y: Float, val xspeed: Float, val y
 
     def traverse(quad: Quad): Unit = (quad: Quad) match
       case Empty(_, _, _) =>
-        // no force
       case Leaf(_, _, _, bodies) =>
-        // add force contribution of each body by calling addForce
+        bodies.foreach(b => addForce(b.mass, b.x, b.y))
       case Fork(nw, ne, sw, se) =>
+        if (quad.size / distance(quad.massX, quad.massY, x, y) < theta) then
+          addForce(quad.mass, quad.massX, quad.massY)
+        else
+          Seq(nw, ne, sw, se).foreach(traverse)
         // see if node is far enough from the body,
         // or recursion is needed
 
@@ -138,13 +159,16 @@ class SectorMatrix(val boundaries: Boundaries, val sectorPrecision: Int) extends
   for i <- 0 until matrix.length do matrix(i) = ConcBuffer()
 
   def +=(b: Body): SectorMatrix =
-    ???
+    val x = ((b.x.max(boundaries.minX).min(boundaries.maxX) - boundaries.minX) / sectorSize).toInt
+    val y = ((b.y.max(boundaries.minY).min(boundaries.maxY) - boundaries.minY) / sectorSize).toInt
+    this(x, y) += b
     this
 
   def apply(x: Int, y: Int) = matrix(y * sectorPrecision + x)
 
   def combine(that: SectorMatrix): SectorMatrix =
-    ???
+    matrix.indices.foreach(i => matrix(i) = matrix(i).combine(that.matrix(i)))
+    this
 
   def toQuad(parallelism: Int): Quad =
     def BALANCING_FACTOR = 4
